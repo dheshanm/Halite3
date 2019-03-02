@@ -13,21 +13,22 @@ import random
 #   (print statements) are reserved for the engine-bot communication.
 import logging
 
+import numpy as np
+
 """ <<<Game Begin>>> """
 # This game object contains the initial game state.
 game = hlt.Game()
 # At this point "game" variable is populated with initial map data.
 # This is a good place to do computationally expensive start-up pre-processing.
 # As soon as you call "ready" function below, the 2 second per turn timer will start.
-game.ready("Slatty")
+game.ready("L4TTiCe beta")
 
 # Now that your bot is initialized, save a message to yourself in the log file with some important information.
 #   Here, you log here your id, which you can always fetch from the game object by using my_id.
 logging.info("Successfully created bot! My Player ID is {}.".format(game.my_id))
 
 """ <<<Game Loop>>> """
-
-ship_INTENT = {}
+log_LEVEL = "i"
 
 while True:
     # This loop handles each turn of the game. The game object changes every turn, and you refresh that state by
@@ -42,58 +43,88 @@ while True:
     command_queue = []
 
     directions = [Direction.North, Direction.South, Direction.East, Direction.West, Direction.Still]
-    queued_coords = []
+    # Collect Updated Data
+    logging.info("Refreshing Inventory Co-ordinates...")
+    my_deposit_coords = [item.position for item in list(me.get_dropoffs())] + [me.shipyard.position]
+    my_ship_coords = [item.position for item in list(me.get_ships())]
+    logging.info("Ship Coords :" + str(my_ship_coords))
+    logging.info("depo Coords :" + str(my_deposit_coords))
+    logging.info("Instructing Ships...")
 
     for ship in me.get_ships():
-        if ship.id not in ship_INTENT:
-            logging.info("Initializing Ship #" + str(ship.id))
-            ship_INTENT[ship.id] = "COLLECT"
-
         logging.info("Processing Ship #"+str(ship.id))
-        logging.info("INTENT\t: "+str(ship_INTENT[ship.id]))
 
-        if ship_INTENT[ship.id] == "COLLECT":
-            ship_surrounding_coord = ship.position.get_surrounding_cardinals() + [ship.position]
-            ship_surrounding_coord_DB = {}
-            # ship_surrounding_coord[ Direction.North ] = Its Position in map like (25, 30)
-            for index, direction in enumerate(directions):
-                ship_surrounding_coord_DB[direction] = ship_surrounding_coord[index]
-            ship_surrounding_coord_haliteDB = {}
-            # ship_surrounding_coord_haliteDB[ Direction.North ] = Halite in that Location
-            for direction in ship_surrounding_coord_DB:
-                position = ship_surrounding_coord_DB[direction]
-                halite_count = game_map[position].halite_amount
-                if ship_surrounding_coord_DB[direction] not in queued_coords:
-                    if direction == Direction.Still:
-                        # Biasing Current location to encourage Collecting
-                        halite_count = halite_count*2
-                    ship_surrounding_coord_haliteDB[direction] = halite_count
+        # area of the Map, each ship Analyses or Cosiders for its next Move
+        minimap_SIZE = 16
+        ship_data_matrix = []   # Data collected by this ship for each coord. in its Area-of-Interest
+        # Data of Interest : Halite Amount, any ship in its vicinity, if its a DEPOSIT spot (if so, its Owner)
 
-            preferred_direction = max(ship_surrounding_coord_haliteDB, key=ship_surrounding_coord_haliteDB.get)
-            queued_coords.append(ship_surrounding_coord_DB[preferred_direction])
-            logging.info("Queued Coord : " + str(ship_surrounding_coord_DB[preferred_direction]))
-            command_queue.append(ship.move(preferred_direction))
+        for y in range(-minimap_SIZE, minimap_SIZE+1):
+            row_DATA = []
+            for x in range(-minimap_SIZE, minimap_SIZE+1):
+                coords = game_map[ship.position + Position(x,y)]
+                log_buffer = "Analyzing coord : "+str(coords)
 
-            if ship.halite_amount >= constants.MAX_HALITE * 0.80:
-                logging.info("Switching INTENT to Deposit Mode")
-                ship_INTENT[ship.id] = "DEPOSIT"
+                halite_onCoord = round( coords.halite_amount / constants.MAX_HALITE, 2)
+                ship_onCoord = coords.ship
+                depo_onCoord = coords.structure
 
-        elif ship_INTENT[ship.id] == "DEPOSIT":
-            predicted_move = game_map.naive_navigate(ship, me.shipyard.position)
-            next_pos = ship.position + Position(*predicted_move)
-            if next_pos not in queued_coords:
-                queued_coords.append(next_pos)
-                command_queue.append(ship.move(predicted_move))
-                logging.info("Queued Coord : " + str(ship_surrounding_coord_DB[predicted_move]))
-                if predicted_move == Direction.Still:
-                    logging.info("Switching INTENT to Collect Mode")
-                    ship_INTENT[ship.id]="COLLECT"
+                if halite_onCoord is None:
+                    halite_onCoord = 0
 
+                if ship_onCoord is None:
+                    ship_onCoord = 0
+                else:
+                    if log_buffer != "" and log_LEVEL == 'v':
+                        logging.info(log_buffer)
+                        log_buffer = ""
+                    if log_LEVEL == 'v':
+                        logging.info("Ship Encountered ")
+                    if coords.position in my_ship_coords:
+                        SHIP_Ownership = 1
+                        if log_LEVEL == 'v':
+                            logging.info("Ship determined Friendly")
+                    else:
+                        SHIP_Ownership = -1
+                        if log_LEVEL == 'v':
+                            logging.info("Ship determined Hostile")
+                    ship_onCoord = round(SHIP_Ownership * (ship_onCoord.halite_amount / constants.MAX_HALITE), 2)
+
+                if depo_onCoord is None:
+                    depo_onCoord = 0
+                else:
+                    if log_buffer != "" and log_LEVEL == 'v':
+                        logging.info(log_buffer)
+                        log_buffer = ""
+                    if log_LEVEL == 'v':
+                        logging.info("Depo Encountered ")
+                    if coords.position in my_deposit_coords:
+                        DEPO_Ownership = 1
+                        if log_LEVEL == 'v':
+                            logging.info("Depo determined Friendly")
+                    else:
+                        DEPO_Ownership = -1
+                        if log_LEVEL == 'v':
+                            logging.info("Depo determined Hostile")
+                    depo_onCoord = DEPO_Ownership
+
+                row_DATA.append((halite_onCoord, ship_onCoord, depo_onCoord))
+            ship_data_matrix.append(row_DATA)
+
+        if game.turn_number == 5:
+            with open("temp.log", 'w') as log:
+                log.write(str(ship_data_matrix))
+
+        np.save(f"gameplay/{game.turn_number}.npy", ship_data_matrix)
+
+        command_queue.append(ship.move(Direction.North))
 
     # If the game is in the first 200 turns and you have enough halite, spawn a ship.
     # Don't spawn a ship if you currently have a ship at port, though - the ships will collide.
-    if game.turn_number <= 200 and me.halite_amount >= constants.SHIP_COST and not game_map[me.shipyard].is_occupied:
-        command_queue.append(me.shipyard.spawn())
+    if len(me.get_ships()) < 1:
+        if game.turn_number <= 200 and me.halite_amount >= constants.SHIP_COST and not game_map[me.shipyard].is_occupied:
+            command_queue.append(me.shipyard.spawn())
+            logging.info("Authorized commissioning of Ship.")
 
     # Send your moves back to the game environment, ending this turn.
     game.end_turn(command_queue)
