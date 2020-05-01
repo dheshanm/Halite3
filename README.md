@@ -27,3 +27,14 @@ The Halite executable comes with a command line interface (CLI). Run `$ ./halite
   * Elixir: Upload a mix.exs. Your bot will compile with `mix deps.get` followed by `mix escript.build`.
   * Clojure: Upload a project.clj. Your bot will compile with `lein uberjar`.
   * .NET: Upload a MyBot.csproj or MyBot.fsproj. Your bot will compile with `dotnet restore` followed with `dotnet build`.
+  
+## Results and Rankings
+Player Profile available [here](https://2018.halite.io/user/?user_id=6372)
+
+![alt text](https://github.com/L4TTiCe/Halite3/raw/master/results/dash.png "Dashboard")
+![alt text][history]
+![alt text][rating]
+
+[history]: https://github.com/L4TTiCe/Halite3/raw/master/results/history.png "History"
+[rating]: https://github.com/L4TTiCe/Halite3/raw/master/results/rating.png "Ratings"
+  
